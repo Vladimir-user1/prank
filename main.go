@@ -8,7 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -25,6 +29,8 @@ func main() {
 
 	InitDB()
 
+	go startBot()
+
 	http.HandleFunc("/", prankHandler)
 	http.HandleFunc("/count", countHandler)
 
@@ -34,6 +40,61 @@ func main() {
 	}
 	fmt.Println("Сервер запущен на порту", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
+}
+
+func startBot() {
+	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	chatIDStr := os.Getenv("TELEGRAM_CHAT_ID")
+
+	if botToken == "" || chatIDStr == "" {
+		log.Println("TELEGRAM_BOT_TOKEN или TELEGRAM_CHAT_ID не указаны")
+		return
+	}
+
+	chatID, err := strconv.ParseInt(chatIDStr, 10, 64)
+	if err != nil {
+		log.Println("Неверный TELEGRAM_CHAT_ID:", err)
+		return
+	}
+
+	bot, err := tgbotapi.NewBotAPI(botToken)
+	if err != nil {
+		log.Println("Ошибка запуска бота:", err)
+		return
+	}
+
+	log.Println("Telegram-бот запущен")
+
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+
+	updates, err := bot.GetUpdatesChan(u)
+	if err != nil {
+		log.Println("Ошибка получения обновлений:", err)
+		return
+	}
+
+	for update := range updates {
+		if update.Message == nil {
+			continue
+		}
+
+		if update.Message.Chat.ID != chatID {
+			continue // Игнорировать других пользователей
+		}
+
+		if update.Message.Text == "/count" {
+			var count int
+			err := DB.QueryRow("SELECT COUNT(*) FROM visits").Scan(&count)
+			if err != nil {
+				bot.Send(tgbotapi.NewMessage(chatID, "Ошибка БД"))
+				continue
+			}
+
+			msg := fmt.Sprintf("👀 Всего переходов: %d", count)
+			bot.Send(tgbotapi.NewMessage(chatID, msg))
+		}
+	}
 }
 
 func prankHandler(w http.ResponseWriter, r *http.Request) {
@@ -63,7 +124,7 @@ func prankHandler(w http.ResponseWriter, r *http.Request) {
 			</style>
 		</head>
 		<body>
-			<h1>Ты думал будешь смотреть на 🍆 в OnlyFans!? Поздравляю с 1 апреля 2026, я тебя наебал </h1>
+			<h1>Ты думал будешь смотреть на 🍆 в OnlyFans!? Поздравляю с 1 апреля 2026, тебя наебали </h1>
 		</body>
 		</html>
 	`)
