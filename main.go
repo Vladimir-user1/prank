@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -11,9 +12,15 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Не удалось загрузить .env файл")
+
+	// Загрузка .env только локально
+	if _, ok := os.LookupEnv("RENDER"); !ok {
+		err := godotenv.Load()
+		if err != nil {
+			log.Println(" .env файл не загружен (локальный запуск)")
+		} else {
+			log.Println(" .env файл загружен")
+		}
 	}
 
 	InitDB()
@@ -21,7 +28,10 @@ func main() {
 	http.HandleFunc("/", prankHandler)
 	http.HandleFunc("/count", countHandler)
 
-	port := "10000" // For Render
+	port := os.Getenv("PORT") // For Render
+	if port == "" {
+		port = "10000"
+	}
 	fmt.Println("Сервер запущен на порту", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
